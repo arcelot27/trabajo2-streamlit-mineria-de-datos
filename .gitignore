@@ -1,0 +1,45 @@
+# Python y entornos locales
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Credenciales y configuración privada
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+*.pem
+*.key
+*.p12
+
+# Archivos de usuarios y salidas de procesamiento
+*.csv
+*.parquet
+*.pq
+*.xlsx
+*.xls
+*.jsonl
+*.zip
+!/my_file (1).csv
+!/sample_data/ventas_demo.csv
+/datasets/
+/resultados*/
+/salida/
+*.log
+
+# Notas y mediciones propias del equipo
+/COMPARACION_PROYECTOS.md
+/RENDIMIENTO.md
+/rendimiento_carga.json
+
+# Archivos de editores y del sistema
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
