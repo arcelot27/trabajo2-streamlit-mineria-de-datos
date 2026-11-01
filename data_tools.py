@@ -1,7 +1,4 @@
-"""Funciones adaptadas de la comparación con DataLimpia Analytics.
-
-Implementación integrada con los datos, la auditoría y el tema de DataClara.
-"""
+"""Lectura de archivos, perfilado, hallazgos y exportaciones de DataClara."""
 
 from __future__ import annotations
 

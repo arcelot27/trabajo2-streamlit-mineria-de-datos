@@ -32,11 +32,6 @@ htmlcov/
 /salida/
 *.log
 
-# Notas y mediciones propias del equipo
-/COMPARACION_PROYECTOS.md
-/RENDIMIENTO.md
-/rendimiento_carga.json
-
 # Archivos de editores y del sistema
 .idea/
 .vscode/
