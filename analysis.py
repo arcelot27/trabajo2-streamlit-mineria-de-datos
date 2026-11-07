@@ -313,6 +313,42 @@ def suggest_dates(df):
     return [col for col in found if found[col] == fmt], fmt
 
 
+def product_sales(df, product, quantity, price=None, description=None):
+    """Resume unidades positivas, movimientos negativos e importe neto por producto."""
+    if not pd.api.types.is_numeric_dtype(df[quantity]) or pd.api.types.is_bool_dtype(
+        df[quantity]
+    ):
+        raise ValueError("La cantidad debe ser una columna numérica.")
+    work = pd.DataFrame(
+        {"producto": df[product].astype("string"), "cantidad": df[quantity]}
+    )
+    if price is not None:
+        if not pd.api.types.is_numeric_dtype(df[price]) or pd.api.types.is_bool_dtype(
+            df[price]
+        ):
+            raise ValueError("El precio debe ser una columna numérica.")
+        work["importe_neto"] = df[quantity] * df[price]
+    if description is not None:
+        work["descripcion"] = df[description].astype("string")
+    work = work.dropna(subset=["producto", "cantidad"])
+    work["unidades_vendidas"] = work.cantidad.clip(lower=0)
+    work["unidades_devueltas"] = -work.cantidad.clip(upper=0)
+    work = work.rename(columns={"cantidad": "unidades_netas"})
+    columns = ["unidades_vendidas", "unidades_devueltas", "unidades_netas"]
+    if price is not None:
+        columns.append("importe_neto")
+    grouped = work.groupby("producto", observed=True)
+    table = grouped[columns].sum(min_count=1)
+    if description is not None:
+        table.insert(0, "descripcion", grouped.descripcion.first())
+    totals = {col: work[col].sum(min_count=1) for col in columns}
+    totals["filas_excluidas"] = len(df) - len(work)
+    totals["filas_sin_importe"] = (
+        int(work.importe_neto.isna().sum()) if price is not None else len(work)
+    )
+    return table.reset_index(), totals
+
+
 def clean(df, options):
     """Aplica reglas sobre una copia y cuenta cambios por operación, sin auditar celda a celda."""
     result, audit = df.copy(deep=True), []

@@ -20,7 +20,7 @@ En Windows también puedes abrir `iniciar.bat`.
 3. Ajusta las reglas y pulsa **Aplicar limpieza**.
 4. En **Limpieza**, compara las vistas antes/después, revisa el registro resumido y prepara la descarga CSV.
 5. En **Normalización**, aplica Min–Max o Z-score sobre una copia y descarga el resultado.
-6. En **Análisis**, consulta barras por categoría, distribución, dispersión y correlación.
+6. En **Análisis**, consulta productos más vendidos, importes netos, devoluciones, barras por categoría, distribución, dispersión y correlación. El resumen de productos permite seleccionar sus columnas y descargar el ranking completo.
 7. En **Predicción**, elige fecha, métrica, frecuencia y modelo para evaluar y proyectar escenarios.
 
 Los espacios y marcadores de valores vacíos se uniforman automáticamente. Puedes eliminar duplicados, rellenar faltantes con mediana/texto, eliminar filas incompletas, quitar columnas por proporción de nulos o recortar atípicos con IQR. Los identificadores deben conservarse como texto. Las fechas ambiguas requieren confirmar día y mes.

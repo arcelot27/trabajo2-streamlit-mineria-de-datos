@@ -15,6 +15,7 @@ from analysis import (
     clean,
     load_dataset,
     normalize,
+    product_sales,
     quality,
     suggest_dates,
     suggest_numeric,
@@ -63,6 +64,8 @@ try:
             "csv",
             "normalized",
             "normalization_key",
+            "product_summary",
+            "product_summary_key",
         ]:
             st.session_state.pop(key, None)
         st.session_state.update(
@@ -145,7 +148,13 @@ if submitted or "cleaned" not in st.session_state:
             options=options,
             seconds=perf_counter() - start,
         )
-        for key in ["csv", "normalized", "normalization_key"]:
+        for key in [
+            "csv",
+            "normalized",
+            "normalization_key",
+            "product_summary",
+            "product_summary_key",
+        ]:
             st.session_state.pop(key, None)
 cleaned, audit = st.session_state.cleaned, st.session_state.audit
 st.caption(
@@ -229,10 +238,136 @@ elif section == "Análisis":
     categories.sort(
         key=lambda col: (not 2 <= cardinalities[col] <= 50, cardinalities[col])
     )
-    kind = st.selectbox(
-        "Gráfica", ["Barras por categoría", "Distribución", "Dispersión", "Correlación"]
+    names = {c.casefold().replace("_", "").replace(" ", ""): c for c in cleaned}
+    quantity = next(
+        (names[n] for n in ["quantity", "cantidad", "unidades"] if n in names), None
     )
-    if kind == "Barras por categoría" and categories:
+    product = next(
+        (
+            names[n]
+            for n in [
+                "stockcode",
+                "producto",
+                "description",
+                "descripcion",
+                "descripción",
+            ]
+            if n in names
+        ),
+        None,
+    )
+    kinds = ["Barras por categoría", "Distribución", "Dispersión", "Correlación"]
+    kinds.insert(0 if quantity and product else len(kinds), "Productos más vendidos")
+    kind = st.selectbox("Gráfica", kinds)
+    if kind == "Productos más vendidos" and nums:
+        with st.expander(
+            "Columnas para el resumen de productos",
+            expanded=not bool(quantity and product),
+        ):
+            product = st.selectbox(
+                "Columna de producto o código",
+                cleaned.columns,
+                index=cleaned.columns.get_loc(product) if product else 0,
+            )
+            quantity = st.selectbox(
+                "Columna de cantidad",
+                nums,
+                index=nums.index(quantity) if quantity in nums else 0,
+            )
+            optional = ["Sin seleccionar"] + cleaned.columns.tolist()
+            description = (
+                names.get("description")
+                or names.get("descripcion")
+                or names.get("descripción")
+            )
+            description = st.selectbox(
+                "Descripción del producto (opcional)",
+                optional,
+                index=optional.index(description) if description else 0,
+            )
+            prices = ["Sin seleccionar"] + nums
+            price = (
+                names.get("unitprice")
+                or names.get("preciounitario")
+                or names.get("precio")
+            )
+            price = st.selectbox(
+                "Precio por unidad (opcional)",
+                prices,
+                index=prices.index(price) if price in nums else 0,
+            )
+        description = None if description == "Sin seleccionar" else description
+        price = None if price == "Sin seleccionar" else price
+        summary_key = (product, quantity, price, description)
+        if st.session_state.get("product_summary_key") != summary_key:
+            st.session_state.product_summary = product_sales(
+                cleaned, product, quantity, price, description
+            )
+            st.session_state.product_summary_key = summary_key
+        products, totals = st.session_state.product_summary
+        if products.empty:
+            st.info(
+                "No hay filas con producto y cantidad válidos. Revisa las columnas seleccionadas y la limpieza."
+            )
+            st.stop()
+        st.subheader("Ventas por producto")
+        st.caption("Resumen de todo el dataset limpio cargado.")
+        a, b, c, d = st.columns(4)
+        a.metric("Productos diferentes", len(products))
+        b.metric("Unidades netas", f"{totals['unidades_netas']:,.2f}")
+        c.metric("Unidades positivas", f"{totals['unidades_vendidas']:,.2f}")
+        d.metric(
+            "Unidades devueltas o ajustadas", f"{totals['unidades_devueltas']:,.2f}"
+        )
+        measures = {
+            "Unidades netas": "unidades_netas",
+            "Unidades positivas (antes de devoluciones)": "unidades_vendidas",
+            "Unidades devueltas o ajustadas": "unidades_devueltas",
+        }
+        if price:
+            value = totals["importe_neto"]
+            st.metric(
+                "Importe neto registrado",
+                f"{value:,.2f}" if pd.notna(value) else "Sin datos",
+            )
+            measures["Importe neto"] = "importe_neto"
+        ranking = st.selectbox("Ordenar productos por", list(measures))
+        measure = measures[ranking]
+        top = products.dropna(subset=[measure]).nlargest(15, measure).copy()
+        top["etiqueta"] = top.producto
+        if description:
+            top["etiqueta"] = (
+                top.producto
+                + " · "
+                + top.descripcion.fillna("Sin descripción").str.slice(0, 55)
+            )
+        figure = px.bar(
+            top.sort_values(measure),
+            x=measure,
+            y="etiqueta",
+            orientation="h",
+            hover_data=["producto"],
+            labels={measure: ranking, "etiqueta": "Producto"},
+        )
+        figure.update_yaxes(type="category")
+        show_chart(figure)
+        st.dataframe(top.drop(columns="etiqueta"), hide_index=True)
+        st.caption(
+            f"Hasta 15 productos. El ranking comienza por unidades netas: cantidades positivas menos devoluciones o ajustes negativos. Filas sin producto o cantidad: {totals['filas_excluidas']:,}."
+        )
+        if price:
+            st.caption(
+                f"Importe neto = cantidad × precio, incluyendo negativos; no es utilidad. Filas sin importe válido: {totals['filas_sin_importe']:,}."
+            )
+        st.download_button(
+            "Descargar resumen de productos",
+            products.sort_values(measure, ascending=False)
+            .to_csv(index=False)
+            .encode("utf-8-sig"),
+            "resumen_productos.csv",
+            "text/csv",
+        )
+    elif kind == "Barras por categoría" and categories:
         category = st.selectbox("Categoría", categories)
         metric = st.selectbox("Medida", ["Conteo de registros"] + nums)
         grouped = (
