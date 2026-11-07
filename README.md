@@ -25,6 +25,8 @@ En Windows también puedes abrir `iniciar.bat`.
 
 Los espacios y marcadores de valores vacíos se uniforman automáticamente. Puedes eliminar duplicados, rellenar faltantes con mediana/texto, eliminar filas incompletas, quitar columnas por proporción de nulos o recortar atípicos con IQR. Los identificadores deben conservarse como texto. Las fechas ambiguas requieren confirmar día y mes.
 
+Las fechas reconocibles se preseleccionan mediante una muestra distribuida del archivo. En barras, se priorizan columnas con pocas categorías y los códigos se muestran como etiquetas, sin convertirlos en un eje numérico.
+
 La lectura y limpieza se reutilizan durante la sesión. Cambiar de sección o de gráfica no repite la limpieza. Las vistas muestran hasta 100 filas y la dispersión hasta 5.000 puntos; las descargas conservan todas las filas de su resultado.
 
 Las proyecciones requieren al menos 16 periodos regulares y se evalúan con separación temporal de entrenamiento, validación y prueba. La banda es orientativa; los escenarios son hipótesis y no garantizan resultados futuros. Si se detectan Quantity y UnitPrice, se ofrece su producto como importe, incluyendo movimientos negativos.

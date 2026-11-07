@@ -270,6 +270,49 @@ def suggest_numeric(df, decimal="."):
     return selected
 
 
+def suggest_dates(df):
+    """Detecta fechas en una muestra distribuida; no adivina día/mes ambiguos."""
+    sample = df.iloc[np.linspace(0, len(df) - 1, min(len(df), 1000), dtype=int)]
+    found = {}
+    for col in df:
+        values = sample[col].dropna().astype("string").str.strip()
+        values = values.loc[~values.str.lower().isin(NULL_TOKENS)]
+        if values.empty:
+            continue
+        if values.str.match(r"^\d{4}-\d{2}-\d{2}(?:[T ].*)?$").mean() >= 0.9:
+            fmt = "ISO8601"
+        else:
+            parts = values.str.extract(
+                r"^(\d{1,2})/(\d{1,2})/\d{4}(?: \d{1,2}:\d{2}(?::\d{2})?)?$"
+            )
+            if parts[0].notna().mean() < 0.9:
+                continue
+            first, second = (
+                parts.apply(pd.to_numeric, errors="coerce")
+                .to_numpy(dtype=float, na_value=np.nan)
+                .T
+            )
+            day_first = bool(
+                ((first > 12) & (first <= 31) & (second >= 1) & (second <= 12)).any()
+            )
+            month_first = bool(
+                ((second > 12) & (second <= 31) & (first >= 1) & (first <= 12)).any()
+            )
+            if day_first == month_first:
+                continue
+            fmt = "%d/%m/%Y" if day_first else "%m/%d/%Y"
+            if values.str.contains(":").any():
+                fmt += (
+                    " %H:%M:%S"
+                    if values.str.contains(r"\d+:\d+:\d+").any()
+                    else " %H:%M"
+                )
+        if parse_dates(values, fmt).notna().mean() >= 0.9:
+            found[col] = fmt
+    fmt = next(iter(found.values()), "%d/%m/%Y")
+    return [col for col in found if found[col] == fmt], fmt
+
+
 def clean(df, options):
     """Aplica reglas sobre una copia y cuenta cambios por operación, sin auditar celda a celda."""
     result, audit = df.copy(deep=True), []

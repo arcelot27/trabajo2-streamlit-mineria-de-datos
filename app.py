@@ -11,7 +11,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from analysis import clean, load_dataset, normalize, quality, suggest_numeric
+from analysis import (
+    clean,
+    load_dataset,
+    normalize,
+    quality,
+    suggest_dates,
+    suggest_numeric,
+)
 from forecasting import (
     FREQUENCIES,
     METHODS,
@@ -43,7 +50,10 @@ try:
             "Separador CSV", ["Automático", ",", ";", "\t", "|"]
         )
     signature = hashlib.sha256(payload + str((sheet, separator)).encode()).hexdigest()
-    if st.session_state.get("source") != signature:
+    if (
+        st.session_state.get("source") != signature
+        or "date_suggestions" not in st.session_state
+    ):
         with st.spinner("Leyendo dataset…"):
             original = load_dataset(payload, uploaded.name, separator, sheet)
         for key in [
@@ -59,6 +69,7 @@ try:
             source=signature,
             original=original,
             numeric_suggestions=suggest_numeric(original),
+            date_suggestions=suggest_dates(original),
         )
     original = st.session_state.original
 except (ValueError, OSError, ImportError, BadZipFile) as error:
@@ -71,6 +82,8 @@ formats = {
     "Mes/día/año": "%m/%d/%Y",
     "Día/mes/año con hora": "%d/%m/%Y %H:%M",
     "Mes/día/año con hora": "%m/%d/%Y %H:%M",
+    "Día/mes/año con segundos": "%d/%m/%Y %H:%M:%S",
+    "Mes/día/año con segundos": "%m/%d/%Y %H:%M:%S",
     "ISO 8601": "ISO8601",
     "Mixto (día primero)": "mixed_dayfirst",
 }
@@ -82,8 +95,19 @@ with st.sidebar.form(f"rules_{signature}"):
         original.columns,
         default=st.session_state.numeric_suggestions,
     )
-    dates = st.multiselect("Columnas de fecha", original.columns)
-    date_format = st.selectbox("Formato de fechas", list(formats))
+    proposed_dates, proposed_format = st.session_state.date_suggestions
+    dates = st.multiselect(
+        "Columnas de fecha", original.columns, default=proposed_dates
+    )
+    date_format = st.selectbox(
+        "Formato de fechas",
+        list(formats),
+        index=list(formats.values()).index(proposed_format),
+    )
+    if proposed_dates:
+        st.caption(
+            "Fechas preseleccionadas a partir de una muestra distribuida del archivo. Revisa el formato antes de aplicar cambios."
+        )
     st.caption(
         "Confirma el orden de día y mes. Los identificadores deben conservarse como texto."
     )
@@ -201,6 +225,10 @@ elif section == "Análisis":
     categories = cleaned.select_dtypes(
         include=["object", "string", "category"]
     ).columns.tolist()
+    cardinalities = {col: cleaned[col].nunique() for col in categories}
+    categories.sort(
+        key=lambda col: (not 2 <= cardinalities[col] <= 50, cardinalities[col])
+    )
     kind = st.selectbox(
         "Gráfica", ["Barras por categoría", "Distribución", "Dispersión", "Correlación"]
     )
@@ -218,7 +246,18 @@ elif section == "Análisis":
         )
         table = grouped.head(15).rename("valor").reset_index()
         table[category] = table[category].astype(str)
-        show_chart(px.bar(table, x=category, y="valor", labels={"valor": metric}))
+        figure = px.bar(
+            table.sort_values("valor"),
+            x="valor",
+            y=category,
+            orientation="h",
+            labels={"valor": metric},
+        )
+        figure.update_yaxes(type="category")
+        show_chart(figure)
+        st.caption(
+            "Hasta 15 categorías con mayor aporte. El porcentaje usa el total de todas las categorías con datos."
+        )
         if not grouped.empty and grouped.sum() > 0 and grouped.ge(0).all():
             st.info(
                 f"{grouped.index[0]} concentra el {grouped.iloc[0] / grouped.sum():.1%} del total conocido. Revisa esta concentración al planificar."
