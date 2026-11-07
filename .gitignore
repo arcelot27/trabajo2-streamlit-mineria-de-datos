@@ -26,7 +26,6 @@ htmlcov/
 *.jsonl
 *.zip
 !/my_file (1).csv
-!/sample_data/ventas_demo.csv
 /datasets/
 /resultados*/
 /salida/

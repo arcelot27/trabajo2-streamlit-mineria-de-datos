@@ -1,8 +1,6 @@
-# DataClara Analytics
+# DataClara · Minería de datos
 
-Aplicación de Python y Streamlit para cargar datasets, limpiar datos, normalizar variables, generar gráficas y calcular predicciones.
-
-Los resultados se calculan con el archivo que sube el usuario. La aplicación abre sin datos precargados.
+Aplicación de Python y Streamlit que calcula sus resultados con el dataset cargado por el usuario.
 
 ## Ejecutar
 
@@ -13,40 +11,40 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-En Windows también puedes abrir `iniciar.bat` después de instalar las dependencias.
+En Windows también puedes abrir `iniciar.bat`.
 
 ## Uso
 
-1. Sube un CSV, Excel, JSON o Parquet de hasta 50 MB.
-2. Revisa los tipos detectados y ajusta las reglas de limpieza.
-3. Consulta calidad, normalización, análisis general y gráficas.
-4. Abre **Predicción y decisiones** para proyectar una métrica con fechas.
-5. Descarga los datos limpios, informes y resultados desde **Descargas**.
+1. Sube un CSV o Excel (.xlsx) de hasta 50 MB.
+2. Revisa las columnas numéricas, selecciona fechas y confirma sus formatos.
+3. Ajusta las reglas y pulsa **Aplicar limpieza**.
+4. En **Limpieza**, compara las vistas antes/después, revisa el registro resumido y prepara la descarga CSV.
+5. En **Normalización**, aplica Min–Max o Z-score sobre una copia y descarga el resultado.
+6. En **Análisis**, consulta barras por categoría, distribución, dispersión y correlación.
+7. En **Predicción**, elige fecha, métrica, frecuencia y modelo para evaluar y proyectar escenarios.
 
-La lectura y limpieza se reutilizan al cambiar de sección. La auditoría se resume automáticamente en archivos de más de 50.000 filas. Las tablas están paginadas y las descargas conservan todas las filas.
+Los espacios y marcadores de valores vacíos se uniforman automáticamente. Puedes eliminar duplicados, rellenar faltantes con mediana/texto, eliminar filas incompletas, quitar columnas por proporción de nulos o recortar atípicos con IQR. Los identificadores deben conservarse como texto. Las fechas ambiguas requieren confirmar día y mes.
 
-Las predicciones muestran errores de evaluación y un rango orientativo; no garantizan resultados futuros. Excel se limita a 1.000.000 de celdas entre todas sus hojas; los archivos mayores se pueden descargar como CSV o Parquet.
+La lectura y limpieza se reutilizan durante la sesión. Cambiar de sección o de gráfica no repite la limpieza. Las vistas muestran hasta 100 filas y la dispersión hasta 5.000 puntos; las descargas conservan todas las filas de su resultado.
 
-## Streamlit Community Cloud
+Las proyecciones requieren al menos 16 periodos regulares y se evalúan con separación temporal de entrenamiento, validación y prueba. La banda es orientativa; los escenarios son hipótesis y no garantizan resultados futuros. Si se detectan Quantity y UnitPrice, se ofrece su producto como importe, incluyendo movimientos negativos.
 
-Configuración para el despliegue:
-
-- Rama: `main`.
-- Archivo principal: `app.py`.
-- Python: `3.13`, seleccionado en **Advanced settings**.
-- Dependencias: `requirements.txt`.
-- Tema y configuración: `.streamlit/config.toml`.
-
-La conexión con GitHub y la publicación se completan por separado. Los datasets particulares, resultados y secretos están excluidos de Git.
-
-## Archivos de la aplicación
+## Archivos
 
 | Archivo | Función |
 | --- | --- |
-| `app.py` | Interfaz y descargas |
-| `analysis.py` | Limpieza y normalización |
-| `data_tools.py` | Lectura de archivos, análisis e informes |
-| `studio_ui.py` | Controles y filtros |
-| `forecasting.py` | Predicción y escenarios |
+| `app.py` | Carga, controles, cuatro secciones y descargas CSV |
+| `analysis.py` | Lectura, limpieza, calidad y normalización |
+| `forecasting.py` | Series temporales, modelos, evaluación y gráfica |
 
-Las carpetas de datasets y resultados contienen archivos locales del usuario. La muestra de ventas de `sample_data` se utiliza únicamente cuando se elige la demostración.
+Los datasets locales se conservan como archivos del usuario; no se cargan automáticamente.
+
+## Streamlit Community Cloud
+
+Repositorio: `arcelot27/trabajo2-streamlit-mineria-de-datos`. Rama: `main`. Archivo principal: `app.py`. Selecciona Python **3.13** en **Advanced settings**. Las dependencias están en `requirements.txt` y el tema oscuro en `.streamlit/config.toml`.
+
+Al subir cambios a `main` en GitHub, Community Cloud actualiza la aplicación automáticamente. Los cambios en dependencias pueden tardar unos minutos. Puedes revisar el estado desde **Manage app** y reiniciar desde el menú **Reboot app** si es necesario.
+
+# Elaborado por:
+## Arturo Castañeda Murcia
+## Alan Zapata Torres

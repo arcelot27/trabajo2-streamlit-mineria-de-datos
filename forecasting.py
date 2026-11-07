@@ -18,10 +18,12 @@ def aggregate_series(
 ) -> tuple[pd.Series, dict]:
     if date not in df or metric not in df:
         raise ValueError("Selecciona una fecha y una métrica del dataset.")
-    if not pd.api.types.is_datetime64_any_dtype(df[date]) or not pd.api.types.is_numeric_dtype(
-        df[metric]
-    ):
-        raise ValueError("La fecha debe estar convertida y la métrica debe ser numérica.")
+    if not pd.api.types.is_datetime64_any_dtype(
+        df[date]
+    ) or not pd.api.types.is_numeric_dtype(df[metric]):
+        raise ValueError(
+            "La fecha debe estar convertida y la métrica debe ser numérica."
+        )
     work = df[[date, metric]].dropna().sort_values(date)
     if work.empty:
         raise ValueError("No hay pares válidos de fecha y métrica.")
@@ -65,7 +67,11 @@ def predict(values, horizon: int, method: str, window: int = 8) -> np.ndarray:
 
 
 def forecast(
-    series: pd.Series, horizon=4, method="Promedio reciente", window=8, missing="Detener"
+    series: pd.Series,
+    horizon=4,
+    method="Promedio reciente",
+    window=8,
+    missing="Detener",
 ) -> dict:
     if (
         method not in METHODS
@@ -76,7 +82,7 @@ def forecast(
     ):
         raise ValueError("Configuración de pronóstico inválida.")
     if not isinstance(series.index, pd.DatetimeIndex):
-        raise ValueError("La serie debe tener un índice de fechas.")
+        raise TypeError("La serie debe tener un índice de fechas.")
     s = series.astype(float).sort_index()
     earlier_periods_excluded = 0
     if s.index.has_duplicates:
@@ -107,7 +113,9 @@ def forecast(
     train = s.iloc[: -2 * block]
     validation = s.iloc[-2 * block : -block]
     test = s.iloc[-block:]
-    calibration = validation.to_numpy() - predict(train, len(validation), method, window)
+    calibration = validation.to_numpy() - predict(
+        train, len(validation), method, window
+    )
     width = float(np.quantile(np.abs(calibration), 0.9))
     fitted_before_test = s.iloc[:-block]
     prediction = predict(fitted_before_test, len(test), method, window)
@@ -138,7 +146,9 @@ def forecast(
             "limite_superior_orientativo": final + width,
         }
     )
-    test_frame = pd.DataFrame({"fecha": test.index, "real": test.values, "prediccion": prediction})
+    test_frame = pd.DataFrame(
+        {"fecha": test.index, "real": test.values, "prediccion": prediction}
+    )
     coverage = float((np.abs(test.to_numpy() - prediction) <= width).mean())
     return {
         "history": s,
@@ -158,7 +168,9 @@ def forecast(
 def forecast_figure(result: dict, title: str) -> go.Figure:
     history, future, test = result["history"], result["future"], result["test"]
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=history.index, y=history.values, mode="lines", name="Histórico"))
+    fig.add_trace(
+        go.Scatter(x=history.index, y=history.values, mode="lines", name="Histórico")
+    )
     fig.add_trace(
         go.Scatter(
             x=test.fecha,
@@ -169,7 +181,10 @@ def forecast_figure(result: dict, title: str) -> go.Figure:
     )
     fig.add_trace(
         go.Scatter(
-            x=future.fecha, y=future.limite_superior_orientativo, line_width=0, showlegend=False
+            x=future.fecha,
+            y=future.limite_superior_orientativo,
+            line_width=0,
+            showlegend=False,
         )
     )
     fig.add_trace(
@@ -192,147 +207,9 @@ def forecast_figure(result: dict, title: str) -> go.Figure:
         )
     )
     fig.update_layout(
-        title=title, xaxis_title="Periodo", yaxis_title="Valor de la métrica", height=470
+        title=title,
+        xaxis_title="Periodo",
+        yaxis_title="Valor de la métrica",
+        height=470,
     )
     return fig
-
-
-def render_forecast(df: pd.DataFrame, chart, signature):
-    import streamlit as st
-
-    st.subheader("Predicción y decisiones con tu dataset")
-    st.caption(
-        "Se usa la selección filtrada del archivo cargado. No se consultan datos externos ni se fijan cifras por adelantado."
-    )
-    date_cols = df.select_dtypes(include=["datetime", "datetimetz"]).columns.tolist()
-    nums = df.select_dtypes("number").columns.tolist()
-    if not date_cols or not nums:
-        st.info(
-            "Para predecir, selecciona una columna de fecha en Limpieza avanzada y convierte la métrica a número en Reglas de limpieza."
-        )
-        return
-    names = {c.casefold().replace("_", "").replace(" ", ""): c for c in df}
-    quantity, price = names.get("quantity"), names.get("unitprice")
-    derived = bool(quantity in nums and price in nums)
-    date = st.selectbox("Fecha para predecir", date_cols)
-    derived_label = "Importe (Quantity × UnitPrice)"
-    options = ([derived_label] if derived else []) + nums
-    metric = st.selectbox("Métrica a predecir", options)
-    working = df
-    if derived and metric == derived_label:
-        working = df[[date]].copy()
-        metric = "Importe calculado"
-        working[metric] = df[quantity] * df[price]
-        st.caption(
-            "Importe por línea = Quantity × UnitPrice; incluye devoluciones y ajustes con su signo. Se expresa en la moneda del archivo; no es utilidad."
-        )
-    frequency = st.selectbox("Frecuencia del pronóstico", list(FREQUENCIES))
-    horizon = st.slider("Periodos a proyectar", 1, 12, 4)
-    method = st.selectbox("Modelo de referencia", METHODS)
-    window = st.slider("Ventana de periodos recientes", 4, 20, 8)
-    missing = st.selectbox(
-        "Periodos sin observaciones",
-        ["Tramo continuo más reciente", "Detener", "Cero (cobertura confirmada)"],
-        help="Por defecto se modela desde el último hueco hasta el final, sin rellenar. Solo selecciona cero si el archivo registra todas las operaciones y la ausencia significa que no hubo actividad.",
-    )
-    drop_partial = st.checkbox("Excluir periodos límite incompletos según fechas disponibles", True)
-    try:
-        series, metadata = aggregate_series(
-            working, date, metric, FREQUENCIES[frequency], drop_partial
-        )
-        result = forecast(series, horizon, method, window, missing)
-    except ValueError as exc:
-        st.info(str(exc))
-        return
-    chart(forecast_figure(result, f"Proyección {frequency.lower()} · {metric}"), "forecast_main")
-    if result["earlier_periods_excluded"]:
-        st.info(
-            f"Se usan {len(result['history'])} periodos consecutivos posteriores al último hueco. Se excluyeron {result['earlier_periods_excluded']} periodos previos para modelar sin inventar actividad en fechas sin registros."
-        )
-    evaluation = result["metrics"].set_index("modelo").loc[method]
-    a, b, c = st.columns(3)
-    a.metric("Error absoluto medio de prueba", f"{evaluation.MAE:,.2f}")
-    b.metric(
-        "Error WAPE de prueba",
-        "No definido" if pd.isna(evaluation.WAPE_pct) else f"{evaluation.WAPE_pct:.1f}%",
-    )
-    c.metric("Total proyectado", f"{result['future'].prediccion.sum():,.2f}")
-    st.caption(
-        f"Separación cronológica: {result['train_periods']} periodos iniciales de entrenamiento, {result['validation_periods']} de validación de la banda y {result['test_periods']} de prueba. El modelo no usa el tramo de prueba para ajustar sus predicciones de prueba. La proyección final vuelve a ajustar con todo el histórico disponible."
-    )
-    st.warning(
-        f"La banda usa el percentil 90 del error absoluto de validación ({result['validation_periods']} periodos); es orientativa y no garantiza una cobertura del 90%. Cubrió {result['test_coverage']:.0%} de los periodos de prueba. La evaluación es corta y puede variar con otros cortes temporales."
-    )
-    st.dataframe(result["metrics"], hide_index=True, width="stretch")
-    st.caption(
-        "La comparación ayuda a evaluar el modelo elegido; no se selecciona automáticamente el mejor sobre la prueba. No se estima estacionalidad anual con un único año de datos."
-    )
-    st.caption(
-        "La proyección comienza después del último periodo utilizado. Si se excluyó un periodo final incompleto, la primera proyección cubre ese periodo. Con un dataset antiguo, las fechas proyectadas también pueden ser históricas respecto al calendario actual."
-    )
-    st.markdown("### Escenarios para planificar")
-    change = st.slider("Variación del escenario sobre la proyección (%)", -30, 50, 0, step=5)
-    scenario = result["future"].copy()
-    scenario["escenario"] = scenario.prediccion * (1 + change / 100)
-    st.caption(
-        "La variación es una hipótesis elegida por ti, no un efecto causal estimado ni una recomendación automática."
-    )
-    st.dataframe(scenario, hide_index=True, width="stretch")
-    if evaluation.WAPE_pct > 30:
-        st.info(
-            "El error de prueba supera el 30% (umbral orientativo). Usa la proyección como escenario y revisa fechas, devoluciones y cambios de demanda antes de comprometer recursos."
-        )
-    elif pd.notna(evaluation.WAPE_pct):
-        st.info(
-            "Compara la proyección con tu capacidad disponible y con los periodos de prueba. Confirma costos y existencias antes de decidir compras o contratación."
-        )
-    if derived:
-        st.markdown("### Productos para revisar en la planificación")
-        product = names.get("stockcode") or names.get("description")
-        if product:
-            product_data = df.dropna(subset=[product, quantity]).copy()
-            product_data["unidades_positivas"] = product_data[quantity].clip(lower=0)
-            product_data["unidades_devueltas_o_ajustadas"] = -product_data[quantity].clip(upper=0)
-            product_summary = (
-                product_data.groupby(product)
-                .agg(
-                    unidades_positivas=("unidades_positivas", "sum"),
-                    unidades_devueltas_o_ajustadas=("unidades_devueltas_o_ajustadas", "sum"),
-                )
-                .nlargest(15, "unidades_positivas")
-                .reset_index()
-            )
-            import plotly.express as px
-
-            product_figure = px.bar(
-                product_summary,
-                x=product,
-                y=["unidades_positivas", "unidades_devueltas_o_ajustadas"],
-                barmode="group",
-            )
-            product_figure.update_xaxes(type="category")
-            chart(product_figure, "decision_products")
-            st.caption(
-                "Compara volumen positivo y movimientos negativos para priorizar la revisión de inventario y devoluciones. El dataset no contiene existencias ni costos: no permite calcular un punto de reorden o una utilidad real."
-            )
-    st.caption(
-        f"Filas utilizadas: {metadata['filas_usadas']:,}. Sin par válido: {metadata['filas_sin_par_valido']:,}. Periodos límite excluidos: {metadata['periodos_limite_excluidos']}."
-    )
-    st.download_button(
-        "Descargar proyección y escenario",
-        scenario.to_csv(index=False).encode("utf-8-sig"),
-        "proyeccion_escenarios.csv",
-        "text/csv",
-    )
-    st.download_button(
-        "Descargar evaluación de modelos",
-        result["metrics"].to_csv(index=False).encode("utf-8-sig"),
-        "evaluacion_prediccion.csv",
-        "text/csv",
-    )
-    st.download_button(
-        "Descargar comparación de prueba",
-        result["test"].to_csv(index=False).encode("utf-8-sig"),
-        "prueba_prediccion.csv",
-        "text/csv",
-    )
