@@ -15,6 +15,8 @@ En Windows también puedes abrir `iniciar.bat`.
 
 ## Uso
 
+Usa **Traducir · English** en el panel lateral para cambiar a inglés y **Translate · Español** para volver.
+
 1. Sube un CSV o Excel (.xlsx) de hasta 50 MB.
 2. Revisa las columnas numéricas, selecciona fechas y confirma sus formatos.
 3. Ajusta las reglas y pulsa **Aplicar limpieza**.
@@ -38,6 +40,7 @@ Las proyecciones requieren al menos 16 periodos regulares y se evalúan con sepa
 | `app.py` | Carga, controles, cuatro secciones y descargas CSV |
 | `analysis.py` | Lectura, limpieza, calidad y normalización |
 | `forecasting.py` | Series temporales, modelos, evaluación y gráfica |
+| `i18n.py` | Traducciones de la interfaz |
 
 Los datasets locales se conservan como archivos del usuario; no se cargan automáticamente.
 

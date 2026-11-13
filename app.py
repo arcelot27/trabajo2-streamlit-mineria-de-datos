@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+from functools import partial
 from time import perf_counter
 from zipfile import BadZipFile
 
@@ -27,17 +28,46 @@ from forecasting import (
     forecast,
     forecast_figure,
 )
+from i18n import translate
+
+language = st.session_state.get("language", "es")
+t = partial(translate, language=language)
+
+
+def toggle_language():
+    st.session_state.language = (
+        "en" if st.session_state.get("language", "es") == "es" else "es"
+    )
+    # Send the selected values again so their displayed option labels are refreshed.
+    for key in st.session_state:
+        if key.startswith("localized_"):
+            value = st.session_state[key]
+            if translate(value, language="en") != value:
+                st.session_state[key] = value
+
+
+def translated_table(frame, *value_columns):
+    labels = {col: frame[col].map(t, na_action="ignore") for col in value_columns}
+    return frame.assign(**labels).rename(columns=t)
+
 
 st.set_page_config(
-    page_title="DataClara | Minería de datos",
+    page_title=t("DataClara | Minería de datos"),
     page_icon=":material/analytics:",
     layout="wide",
 )
-st.title("DataClara · Minería de datos")
-st.caption("Carga tu archivo, revisa la limpieza y analiza sus resultados.")
-uploaded = st.sidebar.file_uploader("Dataset CSV o Excel", type=["csv", "xlsx"])
+st.sidebar.button(
+    "Traducir · English" if language == "es" else "Translate · Español",
+    key="toggle_language",
+    on_click=toggle_language,
+)
+st.title(t("DataClara · Minería de datos"))
+st.caption(t("Carga tu archivo, revisa la limpieza y analiza sus resultados."))
+uploaded = st.sidebar.file_uploader(
+    t("Dataset CSV o Excel"), type=["csv", "xlsx"], key="dataset_upload"
+)
 if uploaded is None:
-    st.info("Sube un dataset desde el panel lateral para comenzar.")
+    st.info(t("Sube un dataset desde el panel lateral para comenzar."))
     st.stop()
 
 payload = uploaded.getvalue()
@@ -45,17 +75,22 @@ sheet, separator = 0, "Automático"
 try:
     if uploaded.name.lower().endswith(".xlsx"):
         with pd.ExcelFile(io.BytesIO(payload)) as book:
-            sheet = st.sidebar.selectbox("Hoja de Excel", book.sheet_names)
+            sheet = st.sidebar.selectbox(
+                t("Hoja de Excel"), book.sheet_names, key="excel_sheet"
+            )
     else:
         separator = st.sidebar.selectbox(
-            "Separador CSV", ["Automático", ",", ";", "\t", "|"]
+            t("Separador CSV"),
+            ["Automático", ",", ";", "\t", "|"],
+            key="localized_csv_separator",
+            format_func=t,
         )
     signature = hashlib.sha256(payload + str((sheet, separator)).encode()).hexdigest()
     if (
         st.session_state.get("source") != signature
         or "date_suggestions" not in st.session_state
     ):
-        with st.spinner("Leyendo dataset…"):
+        with st.spinner(t("Leyendo dataset…")):
             original = load_dataset(payload, uploaded.name, separator, sheet)
         for key in [
             "cleaned",
@@ -76,10 +111,19 @@ try:
         )
     original = st.session_state.original
 except (ValueError, OSError, ImportError, BadZipFile) as error:
-    st.error(f"No se pudo leer el archivo: {error}")
+    message, delimiter, details = str(error).partition(": ")
+    st.error(
+        t("No se pudo leer el archivo: {error}", error=t(message) + delimiter + details)
+    )
     st.stop()
 
-st.sidebar.caption(f"{len(original):,} filas · {len(original.columns)} columnas")
+st.sidebar.caption(
+    t(
+        "{rows:,} filas · {columns} columnas",
+        rows=len(original),
+        columns=len(original.columns),
+    )
+)
 formats = {
     "Día/mes/año": "%d/%m/%Y",
     "Mes/día/año": "%m/%d/%Y",
@@ -91,38 +135,71 @@ formats = {
     "Mixto (día primero)": "mixed_dayfirst",
 }
 with st.sidebar.form(f"rules_{signature}"):
-    st.subheader("Reglas de limpieza")
-    decimal = st.selectbox("Separador decimal", [".", ","])
+    st.subheader(t("Reglas de limpieza"))
+    decimal = st.selectbox(
+        t("Separador decimal"), [".", ","], key=f"decimal_{signature}"
+    )
     numeric = st.multiselect(
-        "Columnas numéricas",
+        t("Columnas numéricas"),
         original.columns,
         default=st.session_state.numeric_suggestions,
+        key=f"numeric_columns_{signature}",
     )
     proposed_dates, proposed_format = st.session_state.date_suggestions
     dates = st.multiselect(
-        "Columnas de fecha", original.columns, default=proposed_dates
+        t("Columnas de fecha"),
+        original.columns,
+        default=proposed_dates,
+        key=f"date_columns_{signature}",
     )
+    date_format_key = f"localized_date_format_{signature}"
     date_format = st.selectbox(
-        "Formato de fechas",
+        t("Formato de fechas"),
         list(formats),
-        index=list(formats.values()).index(proposed_format),
+        index=None
+        if date_format_key in st.session_state
+        else list(formats.values()).index(proposed_format),
+        key=date_format_key,
+        format_func=t,
     )
     if proposed_dates:
         st.caption(
-            "Fechas preseleccionadas a partir de una muestra distribuida del archivo. Revisa el formato antes de aplicar cambios."
+            t(
+                "Fechas preseleccionadas a partir de una muestra distribuida del archivo. Revisa el formato antes de aplicar cambios."
+            )
         )
     st.caption(
-        "Confirma el orden de día y mes. Los identificadores deben conservarse como texto."
+        t(
+            "Confirma el orden de día y mes. Los identificadores deben conservarse como texto."
+        )
     )
-    deduplicate = st.checkbox("Eliminar duplicados", True)
-    lowercase = st.checkbox("Convertir texto a minúsculas")
+    deduplicate = st.checkbox(
+        t("Eliminar duplicados"), True, key=f"deduplicate_{signature}"
+    )
+    lowercase = st.checkbox(
+        t("Convertir texto a minúsculas"), key=f"lowercase_{signature}"
+    )
     missing = st.selectbox(
-        "Valores faltantes", ["Conservar", "Mediana / Sin dato", "Eliminar filas"]
+        t("Valores faltantes"),
+        ["Conservar", "Mediana / Sin dato", "Eliminar filas"],
+        key=f"localized_missing_values_{signature}",
+        format_func=t,
     )
-    remove_null = st.checkbox("Eliminar columnas con muchos nulos")
-    threshold = st.slider("Umbral de nulos (%)", 10, 100, 80)
-    outliers = st.selectbox("Valores atípicos", ["Conservar", "Recortar (IQR)"])
-    submitted = st.form_submit_button("Aplicar limpieza", type="primary")
+    remove_null = st.checkbox(
+        t("Eliminar columnas con muchos nulos"), key=f"remove_null_columns_{signature}"
+    )
+    threshold = st.slider(
+        t("Umbral de nulos (%)"), 10, 100, 80, key=f"null_threshold_{signature}"
+    )
+    outliers = st.selectbox(
+        t("Valores atípicos"),
+        ["Conservar", "Recortar (IQR)"],
+        key=f"localized_outliers_{signature}",
+        format_func=t,
+    )
+    submitted = st.form_submit_button(
+        t("Aplicar limpieza"), type="primary", key=f"apply_cleaning_{signature}"
+    )
 
 options = {
     "numeric": numeric,
@@ -137,9 +214,9 @@ options = {
 }
 if submitted or "cleaned" not in st.session_state:
     if set(numeric) & set(dates):
-        st.error("Una columna no puede ser numérica y fecha a la vez.")
+        st.error(t("Una columna no puede ser numérica y fecha a la vez."))
         st.stop()
-    with st.spinner("Limpiando dataset…"):
+    with st.spinner(t("Limpiando dataset…")):
         start = perf_counter()
         cleaned, audit = clean(original, options)
         st.session_state.update(
@@ -158,10 +235,18 @@ if submitted or "cleaned" not in st.session_state:
             st.session_state.pop(key, None)
 cleaned, audit = st.session_state.cleaned, st.session_state.audit
 st.caption(
-    f"{uploaded.name} · {len(cleaned):,} filas conservadas · Limpieza: {st.session_state.seconds:.2f} s"
+    t(
+        "{file} · {rows:,} filas conservadas · Limpieza: {seconds:.2f} s",
+        file=uploaded.name,
+        rows=len(cleaned),
+        seconds=st.session_state.seconds,
+    )
 )
 section = st.sidebar.radio(
-    "Sección", ["Limpieza", "Normalización", "Análisis", "Predicción"]
+    t("Sección"),
+    ["Limpieza", "Normalización", "Análisis", "Predicción"],
+    key="localized_section",
+    format_func=t,
 )
 
 
@@ -171,31 +256,35 @@ def show_chart(figure):
 
 if section == "Limpieza":
     a, b, c = st.columns(3)
-    a.metric("Filas originales", len(original))
-    b.metric("Filas eliminadas", len(original) - len(cleaned))
-    c.metric("Faltantes después", int(cleaned.isna().sum().sum()))
+    a.metric(t("Filas originales"), len(original))
+    b.metric(t("Filas eliminadas"), len(original) - len(cleaned))
+    c.metric(t("Faltantes después"), int(cleaned.isna().sum().sum()))
     before, after = st.columns(2)
     with before:
-        st.subheader("Antes")
+        st.subheader(t("Antes"))
         st.dataframe(original.head(100), hide_index=True)
-        st.dataframe(quality(original), hide_index=True)
+        st.dataframe(translated_table(quality(original)), hide_index=True)
     with after:
-        st.subheader("Después")
+        st.subheader(t("Después"))
         st.dataframe(cleaned.head(100), hide_index=True)
-        st.dataframe(quality(cleaned), hide_index=True)
+        st.dataframe(translated_table(quality(cleaned)), hide_index=True)
     st.caption(
-        "Vista previa de hasta 100 filas. El original se conserva; la descarga contiene todas las filas limpias."
+        t(
+            "Vista previa de hasta 100 filas. El original se conserva; la descarga contiene todas las filas limpias."
+        )
     )
-    st.subheader("Registro de limpieza")
-    st.dataframe(audit, hide_index=True)
+    st.subheader(t("Registro de limpieza"))
+    st.dataframe(translated_table(audit, "operacion"), hide_index=True)
     st.caption(
-        "El registro resume cantidades por operación. Las conversiones inválidas quedan vacías; los atípicos se conservan salvo que elijas recortarlos."
+        t(
+            "El registro resume cantidades por operación. Las conversiones inválidas quedan vacías; los atípicos se conservan salvo que elijas recortarlos."
+        )
     )
-    if st.button("Preparar CSV limpio"):
+    if st.button(t("Preparar CSV limpio")):
         st.session_state.csv = cleaned.to_csv(index=False).encode("utf-8-sig")
     if "csv" in st.session_state:
         st.download_button(
-            "Descargar dataset limpio",
+            t("Descargar dataset limpio"),
             st.session_state.csv,
             "datos_limpios.csv",
             "text/csv",
@@ -203,11 +292,20 @@ if section == "Limpieza":
 
 elif section == "Normalización":
     columns = st.multiselect(
-        "Variables numéricas a normalizar", cleaned.select_dtypes("number").columns
+        t("Variables numéricas a normalizar"),
+        cleaned.select_dtypes("number").columns,
+        key="normalize_columns",
     )
-    method = st.selectbox("Método", ["Min–Max (0 a 1)", "Z-score"])
+    method = st.selectbox(
+        t("Método"),
+        ["Min–Max (0 a 1)", "Z-score"],
+        key="localized_normalize_method",
+        format_func=t,
+    )
     st.caption(
-        "Se cambia la escala en una copia: Min–Max lleva los valores a [0, 1]; Z-score usa media y desviación. Los faltantes se conservan."
+        t(
+            "Se cambia la escala en una copia: Min–Max lleva los valores a [0, 1]; Z-score usa media y desviación. Los faltantes se conservan."
+        )
     )
     if columns:
         key = (tuple(columns), method)
@@ -216,10 +314,10 @@ elif section == "Normalización":
             st.session_state.normalization_key = key
         normalized, parameters = st.session_state.normalized
         st.dataframe(normalized.head(100), hide_index=True)
-        st.dataframe(parameters, hide_index=True)
-        if st.button("Preparar CSV normalizado"):
+        st.dataframe(translated_table(parameters, "metodo", "estado"), hide_index=True)
+        if st.button(t("Preparar CSV normalizado")):
             st.download_button(
-                "Descargar dataset normalizado",
+                t("Descargar dataset normalizado"),
                 normalized.to_csv(index=False).encode("utf-8-sig"),
                 "datos_normalizados.csv",
                 "text/csv",
@@ -228,7 +326,7 @@ elif section == "Normalización":
 
 elif section == "Análisis":
     if cleaned.empty or not len(cleaned.columns):
-        st.info("No hay datos con estas reglas. Ajusta la limpieza.")
+        st.info(t("No hay datos con estas reglas. Ajusta la limpieza."))
         st.stop()
     nums = cleaned.select_dtypes("number").columns.tolist()
     categories = cleaned.select_dtypes(
@@ -258,21 +356,23 @@ elif section == "Análisis":
     )
     kinds = ["Barras por categoría", "Distribución", "Dispersión", "Correlación"]
     kinds.insert(0 if quantity and product else len(kinds), "Productos más vendidos")
-    kind = st.selectbox("Gráfica", kinds)
+    kind = st.selectbox(t("Gráfica"), kinds, key="localized_chart", format_func=t)
     if kind == "Productos más vendidos" and nums:
         with st.expander(
-            "Columnas para el resumen de productos",
+            t("Columnas para el resumen de productos"),
             expanded=not bool(quantity and product),
         ):
             product = st.selectbox(
-                "Columna de producto o código",
+                t("Columna de producto o código"),
                 cleaned.columns,
                 index=cleaned.columns.get_loc(product) if product else 0,
+                key="product_column",
             )
             quantity = st.selectbox(
-                "Columna de cantidad",
+                t("Columna de cantidad"),
                 nums,
                 index=nums.index(quantity) if quantity in nums else 0,
+                key="quantity_column",
             )
             optional = ["Sin seleccionar"] + cleaned.columns.tolist()
             description = (
@@ -281,9 +381,17 @@ elif section == "Análisis":
                 or names.get("descripción")
             )
             description = st.selectbox(
-                "Descripción del producto (opcional)",
+                t("Descripción del producto (opcional)"),
                 optional,
-                index=optional.index(description) if description else 0,
+                index=None
+                if st.session_state.get("localized_product_description") in optional
+                else optional.index(description)
+                if description
+                else 0,
+                key="localized_product_description",
+                format_func=lambda value: (
+                    t(value) if value == "Sin seleccionar" else value
+                ),
             )
             prices = ["Sin seleccionar"] + nums
             price = (
@@ -292,9 +400,17 @@ elif section == "Análisis":
                 or names.get("precio")
             )
             price = st.selectbox(
-                "Precio por unidad (opcional)",
+                t("Precio por unidad (opcional)"),
                 prices,
-                index=prices.index(price) if price in nums else 0,
+                index=None
+                if st.session_state.get("localized_unit_price") in prices
+                else prices.index(price)
+                if price in nums
+                else 0,
+                key="localized_unit_price",
+                format_func=lambda value: (
+                    t(value) if value == "Sin seleccionar" else value
+                ),
             )
         description = None if description == "Sin seleccionar" else description
         price = None if price == "Sin seleccionar" else price
@@ -307,17 +423,19 @@ elif section == "Análisis":
         products, totals = st.session_state.product_summary
         if products.empty:
             st.info(
-                "No hay filas con producto y cantidad válidos. Revisa las columnas seleccionadas y la limpieza."
+                t(
+                    "No hay filas con producto y cantidad válidos. Revisa las columnas seleccionadas y la limpieza."
+                )
             )
             st.stop()
-        st.subheader("Ventas por producto")
-        st.caption("Resumen de todo el dataset limpio cargado.")
+        st.subheader(t("Ventas por producto"))
+        st.caption(t("Resumen de todo el dataset limpio cargado."))
         a, b, c, d = st.columns(4)
-        a.metric("Productos diferentes", len(products))
-        b.metric("Unidades netas", f"{totals['unidades_netas']:,.2f}")
-        c.metric("Unidades positivas", f"{totals['unidades_vendidas']:,.2f}")
+        a.metric(t("Productos diferentes"), len(products))
+        b.metric(t("Unidades netas"), f"{totals['unidades_netas']:,.2f}")
+        c.metric(t("Unidades positivas"), f"{totals['unidades_vendidas']:,.2f}")
         d.metric(
-            "Unidades devueltas o ajustadas", f"{totals['unidades_devueltas']:,.2f}"
+            t("Unidades devueltas o ajustadas"), f"{totals['unidades_devueltas']:,.2f}"
         )
         measures = {
             "Unidades netas": "unidades_netas",
@@ -327,11 +445,16 @@ elif section == "Análisis":
         if price:
             value = totals["importe_neto"]
             st.metric(
-                "Importe neto registrado",
-                f"{value:,.2f}" if pd.notna(value) else "Sin datos",
+                t("Importe neto registrado"),
+                f"{value:,.2f}" if pd.notna(value) else t("Sin datos"),
             )
             measures["Importe neto"] = "importe_neto"
-        ranking = st.selectbox("Ordenar productos por", list(measures))
+        ranking = st.selectbox(
+            t("Ordenar productos por"),
+            list(measures),
+            key="localized_product_ranking",
+            format_func=t,
+        )
         measure = measures[ranking]
         top = products.dropna(subset=[measure]).nlargest(15, measure).copy()
         top["etiqueta"] = top.producto
@@ -339,7 +462,7 @@ elif section == "Análisis":
             top["etiqueta"] = (
                 top.producto
                 + " · "
-                + top.descripcion.fillna("Sin descripción").str.slice(0, 55)
+                + top.descripcion.fillna(t("Sin descripción")).str.slice(0, 55)
             )
         figure = px.bar(
             top.sort_values(measure),
@@ -347,20 +470,30 @@ elif section == "Análisis":
             y="etiqueta",
             orientation="h",
             hover_data=["producto"],
-            labels={measure: ranking, "etiqueta": "Producto"},
+            labels={
+                measure: t(ranking),
+                "etiqueta": t("Producto"),
+                "producto": t("producto"),
+            },
         )
         figure.update_yaxes(type="category")
         show_chart(figure)
-        st.dataframe(top.drop(columns="etiqueta"), hide_index=True)
+        st.dataframe(translated_table(top.drop(columns="etiqueta")), hide_index=True)
         st.caption(
-            f"Hasta 15 productos. El ranking comienza por unidades netas: cantidades positivas menos devoluciones o ajustes negativos. Filas sin producto o cantidad: {totals['filas_excluidas']:,}."
+            t(
+                "Hasta 15 productos. El ranking comienza por unidades netas: cantidades positivas menos devoluciones o ajustes negativos. Filas sin producto o cantidad: {rows:,}.",
+                rows=totals["filas_excluidas"],
+            )
         )
         if price:
             st.caption(
-                f"Importe neto = cantidad × precio, incluyendo negativos; no es utilidad. Filas sin importe válido: {totals['filas_sin_importe']:,}."
+                t(
+                    "Importe neto = cantidad × precio, incluyendo negativos; no es utilidad. Filas sin importe válido: {rows:,}.",
+                    rows=totals["filas_sin_importe"],
+                )
             )
         st.download_button(
-            "Descargar resumen de productos",
+            t("Descargar resumen de productos"),
             products.sort_values(measure, ascending=False)
             .to_csv(index=False)
             .encode("utf-8-sig"),
@@ -368,8 +501,15 @@ elif section == "Análisis":
             "text/csv",
         )
     elif kind == "Barras por categoría" and categories:
-        category = st.selectbox("Categoría", categories)
-        metric = st.selectbox("Medida", ["Conteo de registros"] + nums)
+        category = st.selectbox(t("Categoría"), categories, key="category")
+        metric = st.selectbox(
+            t("Medida"),
+            ["Conteo de registros"] + nums,
+            key="localized_category_measure",
+            format_func=lambda value: (
+                t(value) if value == "Conteo de registros" else value
+            ),
+        )
         grouped = (
             (
                 cleaned.groupby(category).size()
@@ -386,33 +526,41 @@ elif section == "Análisis":
             x="valor",
             y=category,
             orientation="h",
-            labels={"valor": metric},
+            labels={"valor": t(metric) if metric == "Conteo de registros" else metric},
         )
         figure.update_yaxes(type="category")
         show_chart(figure)
         st.caption(
-            "Hasta 15 categorías con mayor aporte. El porcentaje usa el total de todas las categorías con datos."
+            t(
+                "Hasta 15 categorías con mayor aporte. El porcentaje usa el total de todas las categorías con datos."
+            )
         )
         if not grouped.empty and grouped.sum() > 0 and grouped.ge(0).all():
             st.info(
-                f"{grouped.index[0]} concentra el {grouped.iloc[0] / grouped.sum():.1%} del total conocido. Revisa esta concentración al planificar."
+                t(
+                    "{category} concentra el {share:.1%} del total conocido. Revisa esta concentración al planificar.",
+                    category=grouped.index[0],
+                    share=grouped.iloc[0] / grouped.sum(),
+                )
             )
     elif kind == "Distribución" and nums:
-        column = st.selectbox("Variable", nums)
+        column = st.selectbox(t("Variable"), nums, key="distribution_column")
         values = cleaned[column].dropna().to_numpy(dtype=float)
         counts, edges = np.histogram(values[np.isfinite(values)], bins=20)
         show_chart(
             go.Figure(
                 go.Bar(x=(edges[:-1] + edges[1:]) / 2, y=counts, width=np.diff(edges))
-            ).update_layout(xaxis_title=column, yaxis_title="Registros")
+            ).update_layout(xaxis_title=column, yaxis_title=t("Registros"))
         )
     elif kind == "Dispersión" and len(nums) >= 2:
-        x = st.selectbox("Eje X", nums)
-        y = st.selectbox("Eje Y", nums, index=1)
+        x = st.selectbox(t("Eje X"), nums, key="scatter_x")
+        y = st.selectbox(t("Eje Y"), nums, index=1, key="scatter_y")
         sample = cleaned.sample(min(len(cleaned), 5000), random_state=42)
         show_chart(px.scatter(sample, x=x, y=y))
         st.caption(
-            "Hasta 5.000 puntos para agilizar la visualización. Una asociación no demuestra causalidad."
+            t(
+                "Hasta 5.000 puntos para agilizar la visualización. Una asociación no demuestra causalidad."
+            )
         )
     elif kind == "Correlación" and len(nums) >= 2:
         show_chart(
@@ -426,7 +574,9 @@ elif section == "Análisis":
         )
     else:
         st.info(
-            "La gráfica necesita columnas categóricas o numéricas compatibles. Revisa las reglas de limpieza."
+            t(
+                "La gráfica necesita columnas categóricas o numéricas compatibles. Revisa las reglas de limpieza."
+            )
         )
 
 else:
@@ -436,60 +586,107 @@ else:
     nums = cleaned.select_dtypes("number").columns.tolist()
     if not date_cols or not nums:
         st.info(
-            "Selecciona una columna de fecha y una numérica en las reglas y pulsa Aplicar limpieza."
+            t(
+                "Selecciona una columna de fecha y una numérica en las reglas y pulsa Aplicar limpieza."
+            )
         )
         st.stop()
-    date = st.selectbox("Fecha", date_cols)
+    date = st.selectbox(t("Fecha"), date_cols, key="forecast_date")
     names = {c.casefold().replace("_", "").replace(" ", ""): c for c in cleaned}
     quantity, price = names.get("quantity"), names.get("unitprice")
     derived = quantity in nums and price in nums
     label = "Importe (Quantity × UnitPrice)"
-    metric = st.selectbox("Métrica", ([label] if derived else []) + nums)
+    metric = st.selectbox(
+        t("Métrica"),
+        ([label] if derived else []) + nums,
+        key="localized_forecast_metric",
+        format_func=lambda value: (
+            t(value) if value == "Importe (Quantity × UnitPrice)" else value
+        ),
+    )
     work = cleaned
     if derived and metric == label:
         work = cleaned[[date]].copy()
         work[label] = cleaned[quantity] * cleaned[price]
         st.caption(
-            "Incluye movimientos negativos; el importe está en la moneda del archivo y no representa utilidad."
+            t(
+                "Incluye movimientos negativos; el importe está en la moneda del archivo y no representa utilidad."
+            )
         )
-    frequency = st.selectbox("Frecuencia", list(FREQUENCIES))
-    method = st.selectbox("Modelo", METHODS)
-    horizon = st.slider("Periodos futuros", 1, 12, 4)
-    window = st.slider("Periodos recientes para ajustar", 4, 20, 8)
-    gaps = st.selectbox(
-        "Periodos sin registros",
-        ["Tramo continuo más reciente", "Detener", "Cero (cobertura confirmada)"],
+    frequency = st.selectbox(
+        t("Frecuencia"),
+        list(FREQUENCIES),
+        key="localized_forecast_frequency",
+        format_func=t,
     )
-    partial = st.checkbox("Excluir periodos límite incompletos", True)
+    method = st.selectbox(
+        t("Modelo"), METHODS, key="localized_forecast_model", format_func=t
+    )
+    horizon = st.slider(t("Periodos futuros"), 1, 12, 4, key="forecast_horizon")
+    window = st.slider(
+        t("Periodos recientes para ajustar"), 4, 20, 8, key="forecast_window"
+    )
+    gaps = st.selectbox(
+        t("Periodos sin registros"),
+        ["Tramo continuo más reciente", "Detener", "Cero (cobertura confirmada)"],
+        key="localized_forecast_gaps",
+        format_func=t,
+    )
+    drop_partial = st.checkbox(
+        t("Excluir periodos límite incompletos"), True, key="forecast_partial"
+    )
     try:
         series, metadata = aggregate_series(
-            work, date, metric, FREQUENCIES[frequency], partial
+            work, date, metric, FREQUENCIES[frequency], drop_partial
         )
         result = forecast(series, horizon, method, window, gaps)
     except (ValueError, TypeError) as error:
-        st.info(str(error))
+        st.info(t(str(error)))
         st.stop()
-    show_chart(forecast_figure(result, f"Proyección de {metric}"))
-    st.dataframe(result["metrics"], hide_index=True)
+    metric_label = t(metric) if metric == label else metric
+    show_chart(
+        forecast_figure(
+            result, t("Proyección de {metric}", metric=metric_label), language=language
+        )
+    )
+    st.dataframe(translated_table(result["metrics"], "modelo"), hide_index=True)
     st.caption(
-        f"Entrenamiento: {result['train_periods']} periodos · Validación: {result['validation_periods']} · Prueba: {result['test_periods']}. La comparación no selecciona automáticamente el modelo."
+        t(
+            "Entrenamiento: {train} periodos · Validación: {validation} · Prueba: {test}. La comparación no selecciona automáticamente el modelo.",
+            train=result["train_periods"],
+            validation=result["validation_periods"],
+            test=result["test_periods"],
+        )
     )
     st.caption(
-        f"Filas válidas: {metadata['filas_usadas']:,} · Sin fecha o métrica: {metadata['filas_sin_par_valido']:,} · Periodos límite excluidos: {metadata['periodos_limite_excluidos']} · Periodos previos al último hueco excluidos: {result['earlier_periods_excluded']}."
+        t(
+            "Filas válidas: {used:,} · Sin fecha o métrica: {missing:,} · Periodos límite excluidos: {partial} · Periodos previos al último hueco excluidos: {earlier}.",
+            used=metadata["filas_usadas"],
+            missing=metadata["filas_sin_par_valido"],
+            partial=metadata["periodos_limite_excluidos"],
+            earlier=result["earlier_periods_excluded"],
+        )
     )
     st.warning(
-        f"La banda usa errores de validación y es orientativa. Cubrió {result['test_coverage']:.0%} de la prueba. Las fechas proyectadas siguen al histórico del archivo, aunque sea antiguo."
+        t(
+            "La banda usa errores de validación y es orientativa. Cubrió {coverage:.0%} de la prueba. Las fechas proyectadas siguen al histórico del archivo, aunque sea antiguo.",
+            coverage=result["test_coverage"],
+        )
     )
-    change = st.slider("Variación del escenario (%)", -30, 50, 0, step=5)
+    change = st.slider(
+        t("Variación del escenario (%)"), -30, 50, 0, step=5, key="scenario_adjustment"
+    )
     future = result["future"].copy()
     future["escenario"] = future.prediccion * (1 + change / 100)
-    st.metric("Total proyectado", f"{future.prediccion.sum():,.2f}")
-    st.dataframe(future, hide_index=True)
+    st.metric(t("Total proyectado"), f"{future.prediccion.sum():,.2f}")
+    st.dataframe(translated_table(future), hide_index=True)
     st.caption(
-        "El escenario es una hipótesis elegida por ti. Contrasta la proyección con capacidad, costos y existencias para planificar."
+        t(
+            "El escenario es una hipótesis elegida por ti. Contrasta la proyección con capacidad, costos y existencias para planificar."
+        )
     )
     st.download_button(
-        "Descargar proyección",
+        t("Descargar proyección"),
         future.to_csv(index=False).encode("utf-8-sig"),
         "proyeccion.csv",
         "text/csv",

@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
+from i18n import translate
+
 METHODS = ["Promedio reciente", "Último periodo", "Tendencia lineal"]
 FREQUENCIES = {"Semanal": "W-MON", "Mensual": "MS", "Diaria": "D"}
 
@@ -165,18 +167,23 @@ def forecast(
     }
 
 
-def forecast_figure(result: dict, title: str) -> go.Figure:
+def forecast_figure(result: dict, title: str, *, language: str = "es") -> go.Figure:
     history, future, test = result["history"], result["future"], result["test"]
     fig = go.Figure()
     fig.add_trace(
-        go.Scatter(x=history.index, y=history.values, mode="lines", name="Histórico")
+        go.Scatter(
+            x=history.index,
+            y=history.values,
+            mode="lines",
+            name=translate("Histórico", language=language),
+        )
     )
     fig.add_trace(
         go.Scatter(
             x=test.fecha,
             y=test.prediccion,
             mode="lines+markers",
-            name="Predicción del periodo de prueba",
+            name=translate("Predicción del periodo de prueba", language=language),
         )
     )
     fig.add_trace(
@@ -194,7 +201,7 @@ def forecast_figure(result: dict, title: str) -> go.Figure:
             line_width=0,
             fill="tonexty",
             fillcolor="rgba(56,189,248,.18)",
-            name="Rango orientativo",
+            name=translate("Rango orientativo", language=language),
         )
     )
     fig.add_trace(
@@ -202,14 +209,14 @@ def forecast_figure(result: dict, title: str) -> go.Figure:
             x=future.fecha,
             y=future.prediccion,
             mode="lines+markers",
-            name="Proyección",
+            name=translate("Proyección", language=language),
             line_dash="dash",
         )
     )
     fig.update_layout(
         title=title,
-        xaxis_title="Periodo",
-        yaxis_title="Valor de la métrica",
+        xaxis_title=translate("Periodo", language=language),
+        yaxis_title=translate("Valor de la métrica", language=language),
         height=470,
     )
     return fig
